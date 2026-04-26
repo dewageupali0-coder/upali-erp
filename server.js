@@ -2,7 +2,8 @@ process.env.NODE_ENV = process.env.NODE_ENV || 'production';
 const express = require('express');
 const cors = require('cors');
 const path = require('path');
-const { S3Client, GetObjectCommand, PutObjectCommand } = require('@aws-sdk/client-s3');
+const { S3Client, GetObjectCommand, PutObjectCommand, ListObjectsV2Command } = require('@aws-sdk/client-s3');
+const { getSignedUrl } = require('@aws-sdk/s3-request-presigner');
 
 const s3 = new S3Client({
   region: process.env.S3_REGION || 'us-west-2',
@@ -51,6 +52,37 @@ app.post('/api/:key', async (req, res) => {
   } catch (e) {
     console.error('Save error:', e.message);
     res.status(500).json({ error: e.message });
+  }
+});
+
+// Document library - list all docs
+app.get('/api/documents', async (req, res) => {
+  try {
+    const cmd = new ListObjectsV2Command({ Bucket: BUCKET, Prefix: 'documents/' });
+    const result = await s3.send(cmd);
+    const docs = (result.Contents || [])
+      .filter(o => !o.Key.endsWith('/'))
+      .map(o => ({
+        name: o.Key.replace('documents/', ''),
+        key: o.Key,
+        size: o.Size,
+        updated: o.LastModified
+      }));
+    res.json(docs);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Document download - generate fresh signed URL (1 hour)
+app.get('/api/documents/download/:filename', async (req, res) => {
+  try {
+    const key = `documents/${req.params.filename}`;
+    const cmd = new GetObjectCommand({ Bucket: BUCKET, Key: key });
+    const url = await getSignedUrl(s3, cmd, { expiresIn: 3600 });
+    res.redirect(url);
+  } catch (e) {
+    res.status(404).json({ error: 'Document not found' });
   }
 });
 

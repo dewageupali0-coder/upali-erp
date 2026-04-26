@@ -347,6 +347,8 @@ export default function App() {
   const [docs, setDocs] = useState([]);
   const [docModal, setDocModal] = useState(null);
   const [docContent, setDocContent] = useState("");
+  const [cloudDocs, setCloudDocs] = useState([]);
+  const [cloudDocsLoading, setCloudDocsLoading] = useState(false);
 
   // Load data from persistent storage on mount
   useEffect(() => {
@@ -361,6 +363,18 @@ export default function App() {
       setLoading(false);
     })();
   }, []);
+
+  // Load cloud documents list
+  const loadCloudDocs = async () => {
+    setCloudDocsLoading(true);
+    try {
+      const r = await fetch('/api/documents');
+      const data = await r.json();
+      setCloudDocs(Array.isArray(data) ? data : []);
+    } catch(e) { setCloudDocs([]); }
+    setCloudDocsLoading(false);
+  };
+  useEffect(() => { loadCloudDocs(); }, []);
 
   // Auto-save whenever data changes
   useEffect(() => { if (!loading) DB.save("erp-clients", clients); }, [clients, loading]);
@@ -574,9 +588,52 @@ export default function App() {
     showToast("Template saved to cloud");
   };
 
+  const DOC_ICONS = {
+    "Client_Contract_v3_updated.docx": {icon:"📄", label:"Client Service Contract", color:"#1B6B2E"},
+    "B2B_Agreement_v3_updated.docx": {icon:"🤝", label:"B2B Partnership Agreement", color:"#1B6B2E"},
+    "Tax_Invoice_v3_updated.html": {icon:"🧾", label:"Tax Invoice Template", color:"#D4A017"},
+    "upali_logo_fixed.png": {icon:"🖼️", label:"Company Logo (Fixed)", color:"#555"},
+  };
+
   const DocsPage = () => (
     <div>
-      <h4 style={{color:C.primary,marginBottom:14}}>Document Templates</h4>
+      {/* ===== CLOUD DOCUMENTS ===== */}
+      <div style={{marginBottom:28}}>
+        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:14}}>
+          <h4 style={{color:C.primary,margin:0}}>📁 Company Documents</h4>
+          <button onClick={loadCloudDocs} style={{background:"none",border:`1px solid ${C.border}`,borderRadius:6,padding:"4px 12px",fontSize:12,cursor:"pointer",color:C.primary}}>
+            {cloudDocsLoading ? "Loading…" : "↻ Refresh"}
+          </button>
+        </div>
+        {cloudDocsLoading ? (
+          <div style={{textAlign:"center",padding:24,color:C.muted}}>Loading documents…</div>
+        ) : cloudDocs.length === 0 ? (
+          <div style={{textAlign:"center",padding:24,color:C.muted}}>No cloud documents found.</div>
+        ) : (
+          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(260px,1fr))",gap:12}}>
+            {cloudDocs.map(d => {
+              const meta = DOC_ICONS[d.name] || {icon:"📄", label:d.name, color:"#555"};
+              const ext = d.name.split('.').pop().toUpperCase();
+              const sizekb = Math.round(d.size/1024);
+              return (
+                <div key={d.key} style={{background:"#fff",border:`1.5px solid ${C.border}`,borderRadius:10,padding:16,display:"flex",gap:12,alignItems:"flex-start",boxShadow:"0 2px 8px rgba(0,0,0,.05)"}}>
+                  <div style={{fontSize:32,lineHeight:1}}>{meta.icon}</div>
+                  <div style={{flex:1,minWidth:0}}>
+                    <div style={{fontWeight:700,fontSize:13,color:meta.color,marginBottom:2,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{meta.label}</div>
+                    <div style={{fontSize:11,color:C.muted,marginBottom:8}}>{ext} · {sizekb} KB · Updated {new Date(d.updated).toLocaleDateString()}</div>
+                    <a href={`/api/documents/download/${encodeURIComponent(d.name)}`} target="_blank" rel="noopener noreferrer"
+                      style={{display:"inline-flex",alignItems:"center",gap:4,background:C.primary,color:"#fff",borderRadius:6,padding:"6px 14px",fontSize:12,fontWeight:700,textDecoration:"none"}}>
+                      ⬇ Download
+                    </a>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      <h4 style={{color:C.primary,marginBottom:14}}>✏️ Document Templates</h4>
       <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(280px,1fr))",gap:14}}>
         {docs.map((d) => (
           <Card key={d.id} onClick={() => openDoc(d)} style={{display:"flex",gap:12,alignItems:"flex-start",cursor:"pointer",transition:"box-shadow .15s"}}
